@@ -41,15 +41,15 @@ def backtest():
 
     for price in prices:
 
-        if price <= 0:
-            continue
+    if price <= 0:
+        continue
 
-        buy_qty = amount // price
-        cash += amount - (buy_qty * price)
-        shares += buy_qty
+    buy_qty = amount // price
+    cash += amount - (buy_qty * price)
+    shares += buy_qty
 
-        total = shares * price + cash
-        values.append(float(total))
+    total = shares * price + cash
+    values.append(float(total.item()))
 
     # =========================
     # 3. 수익률 계산
