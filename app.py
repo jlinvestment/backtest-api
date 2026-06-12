@@ -1,5 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import yfinance as yf
+import pandas as pd
 
 app = Flask(__name__)
 CORS(app)
@@ -12,13 +14,58 @@ def home():
 def backtest():
 
     symbol = request.args.get("symbol", "SPY")
-    amount = float(request.args.get("amount", 300))
+    amount = float(request.args.get("amount", 300000))
     years = int(request.args.get("years", 10))
 
+    # =========================
+    # 1. 데이터 다운로드
+    # =========================
+    df = yf.download(symbol, period=f"{years}y")
+
+    if df is None or df.empty:
+        return jsonify({"error": "NO_DATA"})
+
+    df = df[["Close"]].dropna()
+
+    # 월말 기준
+    df = df.resample("ME").last().dropna()
+
+    prices = df["Close"].values
+
+    # =========================
+    # 2. 적립식 백테스트
+    # =========================
+    cash = 0
+    shares = 0
+    values = []
+
+    for price in prices:
+
+        if price <= 0:
+            continue
+
+        buy_qty = amount // price
+        cash += amount - (buy_qty * price)
+        shares += buy_qty
+
+        total = shares * price + cash
+        values.append(float(total))
+
+    # =========================
+    # 3. 수익률 계산
+    # =========================
+    invested = amount * len(values)
+    end_value = values[-1] if values else 0
+
+    ret = ((end_value - invested) / invested) * 100 if invested > 0 else 0
+
+    # =========================
+    # 4. 결과
+    # =========================
     return jsonify({
         "symbol": symbol,
-        "values": [100, 120, 140, 180],
-        "return": 18.5
+        "return": round(ret, 2),
+        "values": values
     })
 
 if __name__ == "__main__":
