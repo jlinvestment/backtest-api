@@ -18,7 +18,7 @@ def backtest():
     years = int(request.args.get("years", 10))
 
     # =========================
-    # 1. 데이터 다운로드
+    # 데이터 다운로드
     # =========================
     df = yf.download(symbol, period=f"{years}y")
 
@@ -27,13 +27,13 @@ def backtest():
 
     df = df[["Close"]].dropna()
 
-    # 월말 기준
+    # 월말 기준 리샘플
     df = df.resample("ME").last().dropna()
 
     prices = df["Close"].values
 
     # =========================
-    # 2. 적립식 백테스트
+    # 백테스트
     # =========================
     cash = 0
     shares = 0
@@ -41,27 +41,24 @@ def backtest():
 
     for price in prices:
 
-    if price <= 0:
-        continue
+        if price <= 0:
+            continue
 
-    buy_qty = amount // price
-    cash += amount - (buy_qty * price)
-    shares += buy_qty
+        buy_qty = amount // price
+        cash += amount - (buy_qty * price)
+        shares += buy_qty
 
-    total = shares * price + cash
-    values.append(float(total.item()))
+        total = shares * price + cash
+        values.append(float(total))
 
     # =========================
-    # 3. 수익률 계산
+    # 수익률
     # =========================
     invested = amount * len(values)
     end_value = values[-1] if values else 0
 
     ret = ((end_value - invested) / invested) * 100 if invested > 0 else 0
 
-    # =========================
-    # 4. 결과
-    # =========================
     return jsonify({
         "symbol": symbol,
         "return": round(ret, 2),
