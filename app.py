@@ -2,6 +2,10 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
+@app.route("/")
+def home():
+    return "API RUNNING"
+
 @app.route("/backtest")
 def backtest():
     symbol = request.args.get("symbol", "SPY")
@@ -13,6 +17,3 @@ def backtest():
         "values": [100, 120, 140, 180],
         "return": 18.5
     })
-
-if __name__ == "__main__":
-    app.run()
