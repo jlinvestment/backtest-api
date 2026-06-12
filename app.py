@@ -7,16 +7,10 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-# =========================
-# HOME
-# =========================
 @app.route("/")
 def home():
     return "API RUNNING"
 
-# =========================
-# BACKTEST API
-# =========================
 @app.route("/backtest")
 def backtest():
 
@@ -25,7 +19,7 @@ def backtest():
     years = int(request.args.get("years", 10))
 
     # =========================
-    # 1. 캐시 처리 (중요)
+    # 캐시
     # =========================
     cache_file = f"/tmp/{symbol}_{years}.pkl"
 
@@ -40,17 +34,15 @@ def backtest():
         df.to_pickle(cache_file)
 
     # =========================
-    # 2. 데이터 정리
+    # 데이터 처리
     # =========================
     df = df[["Close"]].dropna()
-
-    # 월말 기준
     df = df.resample("ME").last().dropna()
 
     prices = df["Close"].to_numpy()
 
     # =========================
-    # 3. 백테스트
+    # 백테스트
     # =========================
     cash = 0
     shares = 0
@@ -67,28 +59,29 @@ def backtest():
 
         total = shares * price + cash
 
-        # numpy 안전 처리
         values.append(float(total.item() if hasattr(total, "item") else total))
 
     # =========================
-    # 4. 수익률 계산
+    # 핵심 계산
     # =========================
-    invested = amount * len(values)
-    end_value = values[-1] if values else 0
+    invested = amount * len(values)        # 총 투자 원금
+    final_value = values[-1] if values else 0  # 최종 자산
 
-    ret = ((end_value - invested) / invested) * 100 if invested > 0 else 0
+    profit = final_value - invested        # 손익
+
+    return_rate = (profit / invested) * 100 if invested > 0 else 0
 
     # =========================
-    # 5. 응답
+    # 응답
     # =========================
     return jsonify({
         "symbol": symbol,
-        "return": round(ret, 2),
+        "return": round(return_rate, 2),
+        "invested": round(invested, 2),
+        "final_value": round(final_value, 2),
+        "profit": round(profit, 2),
         "values": values
     })
 
-# =========================
-# RUN
-# =========================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
