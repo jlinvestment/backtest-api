@@ -7,48 +7,62 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-@app.route("/")
-def home():
-    return "API RUNNING"
+# =========================
+# CAGR
+# =========================
+def calc_cagr(start, end, years):
+    if start <= 0 or years <= 0:
+        return 0
+    return ((end / start) ** (1 / years) - 1) * 100
 
-@app.route("/backtest")
-def backtest():
+# =========================
+# 데이터
+# =========================
+def get_data(symbol, years):
 
-    symbol = request.args.get("symbol", "SPY")
-    amount = float(request.args.get("amount", 300000))
-    years = int(request.args.get("years", 10))
-
-    # =========================
-    # 캐시
-    # =========================
     cache_file = f"/tmp/{symbol}_{years}.pkl"
 
     if os.path.exists(cache_file):
         df = pd.read_pickle(cache_file)
     else:
         df = yf.download(symbol, period=f"{years}y")
-
         if df is None or df.empty:
-            return jsonify({"error": "NO_DATA"})
-
+            return None
         df.to_pickle(cache_file)
 
-    # =========================
-    # 데이터 처리
-    # =========================
-    df = df[["Close"]].dropna()
-    df = df.resample("ME").last().dropna()
+    return df
+
+# =========================
+# 백테스트
+# =========================
+@app.route("/backtest")
+def backtest():
+
+    symbol = request.args.get("symbol", "QQQ")
+    amount = float(request.args.get("amount", 300000))
+    years = int(request.args.get("years", 10))
+
+    df = get_data(symbol, years)
+
+    if df is None or df.empty:
+        return jsonify({"error": "NO_DATA"})
+
+    df = df.dropna()
+    df = df.resample("ME").last()
 
     prices = df["Close"].to_numpy()
 
-    # =========================
-    # 백테스트
-    # =========================
+    dividends = df["Dividends"].fillna(0).to_numpy() if "Dividends" in df else [0]*len(prices)
+
     cash = 0
     shares = 0
     values = []
+    total_dividend = 0
 
-    for price in prices:
+    for i in range(len(prices)):
+
+        price = prices[i]
+        div = dividends[i] if i < len(dividends) else 0
 
         if price <= 0:
             continue
@@ -57,29 +71,35 @@ def backtest():
         cash += amount - (buy_qty * price)
         shares += buy_qty
 
+        # 배당
+        dividend_income = shares * div
+        cash += dividend_income
+        total_dividend += dividend_income
+
         total = shares * price + cash
+        values.append(float(total))
 
-        values.append(float(total.item() if hasattr(total, "item") else total))
+    invested = amount * len(values)
+    final_value = values[-1] if values else 0
 
-    # =========================
-    # 핵심 계산
-    # =========================
-    invested = amount * len(values)        # 총 투자 원금
-    final_value = values[-1] if values else 0  # 최종 자산
-
-    profit = final_value - invested        # 손익
-
+    profit = final_value - invested
     return_rate = (profit / invested) * 100 if invested > 0 else 0
 
-    # =========================
-    # 응답
-    # =========================
+    cagr = calc_cagr(invested, final_value, years)
+
     return jsonify({
         "symbol": symbol,
+
+        # 🔥 정리된 값
+        "invested": round(invested),
+        "dividend": round(total_dividend),
+        "final_value": round(final_value),
+        "profit": round(profit),
+
+        # % 값
         "return": round(return_rate, 2),
-        "invested": round(invested, 2),
-        "final_value": round(final_value, 2),
-        "profit": round(profit, 2),
+        "cagr": round(cagr, 2),
+
         "values": values
     })
 
