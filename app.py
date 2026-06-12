@@ -7,34 +7,24 @@ import os
 app = Flask(__name__)
 CORS(app)
 
-# =========================
-# CAGR
-# =========================
 def calc_cagr(start, end, years):
     if start <= 0 or years <= 0:
         return 0
     return ((end / start) ** (1 / years) - 1) * 100
 
-# =========================
-# 데이터
-# =========================
 def get_data(symbol, years):
 
-    cache_file = f"/tmp/{symbol}_{years}.pkl"
+    try:
+        df = yf.download(symbol, period=f"{years}y", progress=False)
 
-    if os.path.exists(cache_file):
-        df = pd.read_pickle(cache_file)
-    else:
-        df = yf.download(symbol, period=f"{years}y")
         if df is None or df.empty:
             return None
-        df.to_pickle(cache_file)
 
-    return df
+        return df
 
-# =========================
-# 백테스트
-# =========================
+    except Exception:
+        return None
+
 @app.route("/backtest")
 def backtest():
 
@@ -48,11 +38,11 @@ def backtest():
         return jsonify({"error": "NO_DATA"})
 
     df = df.dropna()
-    df = df.resample("ME").last()
 
     prices = df["Close"].to_numpy()
 
-    dividends = df["Dividends"].fillna(0).to_numpy() if "Dividends" in df else [0]*len(prices)
+    # 🔥 핵심: Dividends 안전 처리
+    dividends = df["Dividends"].to_numpy() if "Dividends" in df.columns else [0] * len(prices)
 
     cash = 0
     shares = 0
@@ -71,7 +61,6 @@ def backtest():
         cash += amount - (buy_qty * price)
         shares += buy_qty
 
-        # 배당
         dividend_income = shares * div
         cash += dividend_income
         total_dividend += dividend_income
@@ -79,8 +68,11 @@ def backtest():
         total = shares * price + cash
         values.append(float(total))
 
+    if not values:
+        return jsonify({"error": "NO_VALUES"})
+
     invested = amount * len(values)
-    final_value = values[-1] if values else 0
+    final_value = values[-1]
 
     profit = final_value - invested
     return_rate = (profit / invested) * 100 if invested > 0 else 0
@@ -89,17 +81,12 @@ def backtest():
 
     return jsonify({
         "symbol": symbol,
-
-        # 🔥 정리된 값
         "invested": round(invested),
         "dividend": round(total_dividend),
         "final_value": round(final_value),
         "profit": round(profit),
-
-        # % 값
         "return": round(return_rate, 2),
         "cagr": round(cagr, 2),
-
         "values": values
     })
 
